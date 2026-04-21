@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Editor — AI Agentic Hub</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e1e1e6; }
+
+        .top-bar { background: #1a1b23; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2b35; }
+        .top-bar .title { color: #7c5cfc; font-weight: 700; font-size: 16px; }
+        .top-bar .actions { display: flex; gap: 8px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .btn-primary { background: #7c5cfc; color: #fff; }
+        .btn-primary:hover { background: #6a4de0; }
+        .btn-success { background: #30a46c; color: #fff; }
+        .btn-success:hover { background: #28905e; }
+        .btn-danger { background: #e5484d; color: #fff; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+        .main-layout { display: flex; height: calc(100vh - 49px); }
+
+        .sidebar { width: 260px; background: #1a1b23; border-right: 1px solid #2a2b35; padding: 16px; overflow-y: auto; }
+        .sidebar h3 { font-size: 13px; color: #8b8d98; margin-bottom: 8px; text-transform: uppercase; }
+        .sidebar .node-btn { display: block; width: 100%; padding: 8px 12px; margin-bottom: 6px; background: #0f1117; border: 1px solid #2a2b35; border-radius: 6px; color: #e1e1e6; cursor: grab; font-size: 13px; text-align: left; }
+        .sidebar .node-btn:hover { border-color: #7c5cfc; }
+        .sidebar .node-btn .node-icon { margin-right: 6px; }
+
+        #drawflow { flex: 1; background: #0f1117; }
+
+        .drawflow .drawflow-node { background: #1a1b23; border: 1px solid #2a2b35; border-radius: 8px; min-width: 180px; color: #e1e1e6; }
+        .drawflow .drawflow-node.selected { border-color: #7c5cfc; box-shadow: 0 0 10px rgba(124,92,252,0.3); }
+        .drawflow .drawflow-node .drawflow_content_node { padding: 12px; }
+        .drawflow .connection .main-path { stroke: #7c5cfc; stroke-width: 2; }
+        .drawflow .drawflow-node .input, .drawflow .drawflow-node .output { background: #7c5cfc; }
+
+        .node-header { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+        .node-type { font-size: 11px; color: #8b8d98; margin-bottom: 4px; }
+        .node-detail { font-size: 11px; color: #6b6d78; }
+
+        .config-panel { width: 300px; background: #1a1b23; border-left: 1px solid #2a2b35; padding: 16px; overflow-y: auto; display: none; }
+        .config-panel.active { display: block; }
+        .config-panel h3 { font-size: 14px; margin-bottom: 12px; }
+        .config-panel label { display: block; font-size: 12px; color: #8b8d98; margin-bottom: 4px; margin-top: 8px; }
+        .config-panel input, .config-panel select, .config-panel textarea {
+            width: 100%; padding: 6px 10px; background: #0f1117; border: 1px solid #2a2b35;
+            border-radius: 4px; color: #e1e1e6; font-size: 13px;
+        }
+        .config-panel textarea { min-height: 60px; resize: vertical; }
+
+        .run-panel { display: none; position: fixed; bottom: 0; left: 260px; right: 0; max-height: 40vh; background: #1a1b23; border-top: 2px solid #7c5cfc; overflow-y: auto; padding: 16px; z-index: 100; }
+        .run-panel.active { display: block; }
+        .run-step { padding: 8px 12px; margin-bottom: 6px; border-radius: 6px; font-size: 13px; }
+        .run-step.done { background: #1a2e1f; border: 1px solid #30a46c; }
+        .run-step.error { background: #2e1a1a; border: 1px solid #e5484d; }
+        .run-step .step-name { font-weight: 600; }
+        .run-step .step-output { color: #8b8d98; margin-top: 4px; font-size: 12px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <a href="/workflows" style="color: #8b8d98; text-decoration: none; font-size: 13px;">&larr; Back</a>
+            <span class="title" id="wf-name">Workflow</span>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary" onclick="saveWorkflow()">Save</button>
+            <button class="btn btn-success" onclick="openRunPanel()">Run</button>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="sidebar">
+            <h3>Add Nodes</h3>
+            <button class="node-btn" draggable="true" ondragstart="dragStart(event, 'start')">
+                <span class="node-icon">&#9654;</span> Start
+            </button>
+            <button class="node-btn" draggable="true" ondragstart="dragStart(event, 'agent')">
+                <span class="node-icon">&#9881;</span> Agent
+            </button>
+            <button class="node-btn" draggable="true" ondragstart="dragStart(event, 'end')">
+                <span class="node-icon">&#9632;</span> End
+            </button>
+
+            <h3 style="margin-top: 20px;">Edges</h3>
+            <p style="font-size: 12px; color: #6b6d78;">Connect nodes by dragging from output to input. Set conditions per edge in the config panel.</p>
+        </div>
+
+        <div id="drawflow" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+
+        <div class="config-panel" id="config-panel">
+            <h3 id="config-title">Config</h3>
+            <div id="config-fields"></div>
+            <button class="btn btn-primary btn-sm" style="margin-top: 12px;" onclick="applyConfig()">Apply</button>
+        </div>
+    </div>
+
+    <div class="run-panel" id="run-panel">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="margin: 0;">Workflow Run</h3>
+            <button class="btn btn-danger btn-sm" onclick="closeRunPanel()">Close</button>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+            <input id="run-input" placeholder="Enter initial input for the workflow..." style="width: 80%; padding: 8px; background: #0f1117; border: 1px solid #2a2b35; border-radius: 4px; color: #e1e1e6;">
+            <button class="btn btn-success btn-sm" onclick="runWorkflow()">Execute</button>
+        </div>
+        <div id="run-steps"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+    <script>
+const workflowId = {{ workflow_id }};
+let editor;
+let agents = [];
+let nodeCounter = 0;
+let selectedNodeId = null;
+let nodeDataMap = {};
+let edgeConditions = {};
+let configMode = 'node';
+let selectedEdge = null;
+
+async function init() {
+    const container = document.getElementById('drawflow');
+    editor = new Drawflow(container);
+    editor.reroute = true;
+    editor.start();
+
+    editor.on('nodeSelected', (id) => {
+        selectedNodeId = id;
+        configMode = 'node';
+        showNodeConfig(id);
+    });
+
+    editor.on('nodeUnselected', () => {
+        selectedNodeId = null;
+        document.getElementById('config-panel').classList.remove('active');
+    });
+
+    editor.on('connectionCreated', (conn) => {
+        const key = `${conn.output_id}->${conn.input_id}`;
+        if (!edgeConditions[key]) {
+            edgeConditions[key] = '';
+        }
+    });
+
+    const agentResp = await fetch('/api/agents/');
+    agents = await agentResp.json();
+
+    const wfResp = await fetch(`/api/workflows/${workflowId}`);
+    const wf = await wfResp.json();
+    document.getElementById('wf-name').textContent = wf.name;
+
+    if (wf.graph && wf.graph.nodes && wf.graph.nodes.length > 0) {
+        loadGraph(wf.graph);
+    }
+
+    document.getElementById('drawflow').addEventListener('click', (e) => {
+        const path = e.target.closest('.connection');
+        if (path) {
+            const classes = path.classList;
+            for (const cls of classes) {
+                const match = cls.match(/^node_out_(\d+)$/);
+                if (match) {
+                    const srcId = match[1];
+                    for (const cls2 of classes) {
+                        const match2 = cls2.match(/^node_in_(\d+)$/);
+                        if (match2) {
+                            const tgtId = match2[1];
+                            selectedEdge = { source: srcId, target: tgtId };
+                            configMode = 'edge';
+                            showEdgeConfig(srcId, tgtId);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function loadGraph(graph) {
+    for (const node of graph.nodes) {
+        addNodeToEditor(node.type, node.x || 100, node.y || 100, node);
+    }
+    for (const edge of graph.edges) {
+        const srcDrawId = Object.keys(nodeDataMap).find(k => nodeDataMap[k].id === edge.source);
+        const tgtDrawId = Object.keys(nodeDataMap).find(k => nodeDataMap[k].id === edge.target);
+        if (srcDrawId && tgtDrawId) {
+            editor.addConnection(parseInt(srcDrawId), parseInt(tgtDrawId), 'output_1', 'input_1');
+            const key = `${srcDrawId}->${tgtDrawId}`;
+            edgeConditions[key] = edge.condition || '';
+        }
+    }
+}
+
+function nodeHTML(type, data) {
+    const name = data.name || type;
+    if (type === 'start') {
+        return `<div><div class="node-type">START</div><div class="node-header">${name}</div></div>`;
+    } else if (type === 'end') {
+        return `<div><div class="node-type">END</div><div class="node-header">${name}</div></div>`;
+    } else {
+        const agentName = data.agent_id ? (agents.find(a => a.id == data.agent_id)?.name || 'none') : 'none';
+        return `<div>
+            <div class="node-type">AGENT</div>
+            <div class="node-header">${name}</div>
+            <div class="node-detail">Agent: ${agentName}</div>
+            <div class="node-detail">${(data.task || '').substring(0, 40)}</div>
+        </div>`;
+    }
+}
+
+function addNodeToEditor(type, x, y, existingData) {
+    nodeCounter++;
+    const id = existingData?.id || `node_${nodeCounter}`;
+    const data = existingData || { id: id, type: type, name: type };
+
+    const inputs = type === 'start' ? 0 : 1;
+    const outputs = type === 'end' ? 0 : 1;
+
+    const drawId = editor.addNode(
+        id, inputs, outputs, x, y, type, { id: id },
+        nodeHTML(type, data)
+    );
+
+    nodeDataMap[drawId] = { ...data, id: id };
+    return drawId;
+}
+
+function dragStart(event, type) {
+    event.dataTransfer.setData('nodeType', type);
+}
+
+function allowDrop(event) {
+    event.preventDefault();
+}
+
+function drop(event) {
+    event.preventDefault();
+    const type = event.dataTransfer.getData('nodeType');
+    if (!type) return;
+
+    const rect = document.getElementById('drawflow').getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    addNodeToEditor(type, x, y);
+}
+
+function showNodeConfig(drawId) {
+    const panel = document.getElementById('config-panel');
+    const fields = document.getElementById('config-fields');
+    const data = nodeDataMap[drawId] || {};
+
+    document.getElementById('config-title').textContent = 'Node Config';
+
+    let outgoingEdgeHTML = '';
+    const exportData = editor.export();
+    const drawflowData = exportData.drawflow?.Home?.data || {};
+    const currentNodeInfo = drawflowData[drawId];
+    if (currentNodeInfo && data.type !== 'end') {
+        const outputs = currentNodeInfo.outputs || {};
+        for (const [outputKey, outputVal] of Object.entries(outputs)) {
+            for (const conn of outputVal.connections) {
+                const tgtData = nodeDataMap[conn.node] || {};
+                const key = `${drawId}->${conn.node}`;
+                const cond = edgeConditions[key] || '';
+                outgoingEdgeHTML += `
+                    <label style="margin-top: 8px;">Edge → ${tgtData.name || conn.node}</label>
+                    <input class="cfg-edge" data-key="${key}" value="${cond}" placeholder="e.g. needs_math == true">
+                `;
+            }
+        }
+    }
+
+    if (data.type === 'start') {
+        fields.innerHTML = `
+            <label>Name</label>
+            <input id="cfg-name" value="${data.name || 'start'}">
+            ${outgoingEdgeHTML ? '<h3 style="margin-top: 16px; font-size: 13px; color: #8b8d98;">Outgoing Edge Conditions</h3>' + outgoingEdgeHTML : ''}
+        `;
+    } else if (data.type === 'end') {
+        fields.innerHTML = `
+            <label>Name</label>
+            <input id="cfg-name" value="${data.name || 'end'}">
+        `;
+    } else if (data.type === 'agent') {
+        const agentOptions = agents.map(a =>
+            `<option value="${a.id}" ${a.id == data.agent_id ? 'selected' : ''}>${a.name}</option>`
+        ).join('');
+
+        fields.innerHTML = `
+            <label>Name</label>
+            <input id="cfg-name" value="${data.name || 'agent'}">
+            <label>Agent</label>
+            <select id="cfg-agent">${agentOptions}</select>
+            <label>Task / Instructions</label>
+            <textarea id="cfg-task">${data.task || ''}</textarea>
+            ${outgoingEdgeHTML ? '<h3 style="margin-top: 16px; font-size: 13px; color: #8b8d98;">Outgoing Edge Conditions</h3>' + outgoingEdgeHTML : ''}
+            <p style="font-size: 11px; color: #6b6d78; margin-top: 8px;">
+                Leave empty = always follow. Supports: key == value, key != value, key contains value
+            </p>
+        `;
+    }
+
+    panel.classList.add('active');
+}
+
+function showEdgeConfig(srcDrawId, tgtDrawId) {
+    const panel = document.getElementById('config-panel');
+    const fields = document.getElementById('config-fields');
+    const key = `${srcDrawId}->${tgtDrawId}`;
+    const condition = edgeConditions[key] || '';
+
+    const srcName = nodeDataMap[srcDrawId]?.name || srcDrawId;
+    const tgtName = nodeDataMap[tgtDrawId]?.name || tgtDrawId;
+
+    document.getElementById('config-title').textContent = 'Edge Config';
+
+    fields.innerHTML = `
+        <label>From: ${srcName} → To: ${tgtName}</label>
+        <label>Condition (leave empty for always)</label>
+        <input id="cfg-edge-condition" value="${condition}" placeholder="e.g. needs_math == true">
+        <p style="font-size: 11px; color: #6b6d78; margin-top: 8px;">
+            Supports: key == value, key != value, key contains value, key > value
+        </p>
+    `;
+
+    panel.classList.add('active');
+}
+
+function applyConfig() {
+    if (configMode === 'edge' && selectedEdge) {
+        const key = `${selectedEdge.source}->${selectedEdge.target}`;
+        edgeConditions[key] = document.getElementById('cfg-edge-condition')?.value || '';
+        document.getElementById('config-panel').classList.remove('active');
+        return;
+    }
+
+    if (!selectedNodeId) return;
+    const data = nodeDataMap[selectedNodeId];
+
+    data.name = document.getElementById('cfg-name')?.value || data.name;
+
+    if (data.type === 'agent') {
+        data.agent_id = document.getElementById('cfg-agent')?.value;
+        data.task = document.getElementById('cfg-task')?.value;
+    }
+
+    document.querySelectorAll('.cfg-edge').forEach(input => {
+        const key = input.dataset.key;
+        edgeConditions[key] = input.value || '';
+    });
+
+    const nodeEl = document.querySelector(`#node-${selectedNodeId} .drawflow_content_node`);
+    if (nodeEl) {
+        nodeEl.innerHTML = nodeHTML(data.type, data);
+    }
+}
+
+function getGraph() {
+    const exportData = editor.export();
+    const drawflowData = exportData.drawflow?.Home?.data || {};
+
+    const nodes = [];
+    const edges = [];
+
+    for (const [drawId, nodeInfo] of Object.entries(drawflowData)) {
+        const data = nodeDataMap[drawId] || {};
+        nodes.push({
+            id: data.id || `node_${drawId}`,
+            type: data.type || 'agent',
+            name: data.name || data.type || 'node',
+            agent_id: data.agent_id || null,
+            task: data.task || '',
+            x: nodeInfo.pos_x,
+            y: nodeInfo.pos_y,
+        });
+
+        const outputs = nodeInfo.outputs || {};
+        for (const [outputKey, outputVal] of Object.entries(outputs)) {
+            for (const conn of outputVal.connections) {
+                const targetData = nodeDataMap[conn.node] || {};
+                const key = `${drawId}->${conn.node}`;
+                edges.push({
+                    source: data.id || `node_${drawId}`,
+                    target: targetData.id || `node_${conn.node}`,
+                    condition: edgeConditions[key] || '',
+                });
+            }
+        }
+    }
+
+    return { nodes, edges };
+}
+
+async function saveWorkflow() {
+    const graph = getGraph();
+    await fetch(`/api/workflows/${workflowId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ graph }),
+    });
+    alert('Saved!');
+}
+
+function openRunPanel() {
+    document.getElementById('run-panel').classList.add('active');
+}
+
+function closeRunPanel() {
+    document.getElementById('run-panel').classList.remove('active');
+}
+
+async function runWorkflow() {
+    const input = document.getElementById('run-input').value;
+    const stepsEl = document.getElementById('run-steps');
+    stepsEl.innerHTML = '<div style="color: #8b8d98;">Running...</div>';
+
+    await saveWorkflow();
+
+    const resp = await fetch(`/api/workflows/${workflowId}/run`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ input }),
+    });
+    const result = await resp.json();
+
+    stepsEl.innerHTML = result.steps.map(step => `
+        <div class="run-step ${step.error ? 'error' : 'done'}">
+            <div class="step-name">${step.name} <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#2a2b35;">${step.type}</span></div>
+            <div class="step-output">${(step.output || '').substring(0, 500)}</div>
+            ${step.tool_calls ? step.tool_calls.map(tc =>
+                `<div class="step-output" style="color: #e5c07b;">&rarr; ${tc.tool}(${JSON.stringify(tc.args)}) = ${tc.result.substring(0, 200)}</div>`
+            ).join('') : ''}
+        </div>
+    `).join('');
+}
+
+init();
+    </script>
+</body>
+</html>

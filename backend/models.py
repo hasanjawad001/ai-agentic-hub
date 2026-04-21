@@ -27,3 +27,10 @@ class Agent(SQLModel, table=True):
     llm_server_id: int = Field(foreign_key="llmserver.id")
     tool_ids: list = Field(default=[], sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Workflow(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    graph: dict = Field(default={}, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)

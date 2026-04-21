@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Workflows — AI Agentic Hub{% endblock %}
+{% block content %}
+<h1>Workflows</h1>
+
+<div class="card">
+    <h3 style="margin-bottom: 12px;">Create Workflow</h3>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Name</label>
+            <input id="wf-name" placeholder="my-workflow">
+        </div>
+        <div class="form-group" style="flex: 0; display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="createWorkflow()">Create</button>
+        </div>
+    </div>
+</div>
+
+<div id="workflow-list"></div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadWorkflows() {
+    const resp = await fetch('/api/workflows/');
+    const workflows = await resp.json();
+    const list = document.getElementById('workflow-list');
+    list.innerHTML = workflows.map(w => `
+        <div class="card">
+            <div class="card-row">
+                <div>
+                    <div class="card-title">${w.name}</div>
+                    <div class="card-sub">Nodes: ${(w.graph.nodes || []).length} | Edges: ${(w.graph.edges || []).length}</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="/workflows/${w.id}/editor" class="btn btn-primary btn-sm" style="text-decoration:none;">Edit</a>
+                    <button class="btn btn-danger btn-sm" onclick="deleteWorkflow(${w.id})">Delete</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function createWorkflow() {
+    const name = document.getElementById('wf-name').value.trim();
+    if (!name) return;
+    const data = {
+        name: name,
+        graph: { nodes: [], edges: [] },
+    };
+    const resp = await fetch('/api/workflows/', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+    const wf = await resp.json();
+    window.location.href = `/workflows/${wf.id}/editor`;
+}
+
+async function deleteWorkflow(id) {
+    await fetch(`/api/workflows/${id}`, { method: 'DELETE' });
+    loadWorkflows();
+}
+
+loadWorkflows();
+</script>
+{% endblock %}
