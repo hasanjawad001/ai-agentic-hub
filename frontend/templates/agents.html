@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Agents — AI Agentic Hub{% endblock %}
+{% block content %}
+<h1>Agents</h1>
+
+<div class="card" id="add-form">
+    <h3 style="margin-bottom: 12px;">Create Agent</h3>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Name</label>
+            <input id="agent-name" placeholder="my-agent">
+        </div>
+        <div class="form-group">
+            <label>LLM Server</label>
+            <select id="agent-llm"></select>
+        </div>
+    </div>
+    <div class="form-group">
+        <label>System Prompt</label>
+        <textarea id="agent-prompt" placeholder="You are a helpful assistant..."></textarea>
+    </div>
+    <div class="form-group">
+        <label>Tools (select from MCP servers)</label>
+        <div id="tool-picker" style="max-height: 200px; overflow-y: auto; background: #0f1117; border: 1px solid #2a2b35; border-radius: 6px; padding: 8px;"></div>
+    </div>
+    <button class="btn btn-primary" onclick="createAgent()">Create Agent</button>
+</div>
+
+<div id="agent-list"></div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let allTools = [];
+
+async function loadLLMs() {
+    const resp = await fetch('/api/llm-servers/');
+    const servers = await resp.json();
+    const sel = document.getElementById('agent-llm');
+    sel.innerHTML = servers.map(s => `<option value="${s.id}">${s.name} (${s.model})</option>`).join('');
+}
+
+async function loadToolPicker() {
+    const resp = await fetch('/api/mcp-servers/');
+    const servers = await resp.json();
+    const picker = document.getElementById('tool-picker');
+    allTools = [];
+    let html = '';
+
+    for (const server of servers) {
+        const toolResp = await fetch(`/api/mcp-servers/${server.id}/tools`);
+        const tools = await toolResp.json();
+        if (tools.length && !tools[0]?.error) {
+            html += `<div style="margin-bottom: 8px;"><strong style="font-size: 12px; color: #8b8d98;">${server.name}</strong></div>`;
+            for (const t of tools) {
+                const toolId = `mcp:${server.id}:${t.name}`;
+                allTools.push(toolId);
+                html += `<label style="display: block; padding: 2px 0; font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" value="${toolId}"> ${t.name}
+                    <span style="color: #8b8d98; font-size: 11px;">${t.description || ''}</span>
+                </label>`;
+            }
+        }
+    }
+
+    picker.innerHTML = html || '<span style="color: #8b8d98; font-size: 13px;">No MCP servers added yet. Add one first.</span>';
+}
+
+async function loadAgents() {
+    const resp = await fetch('/api/agents/');
+    const agents = await resp.json();
+    const list = document.getElementById('agent-list');
+    list.innerHTML = agents.map(a => `
+        <div class="card">
+            <div class="card-row">
+                <div>
+                    <div class="card-title">${a.name}</div>
+                    <div class="card-sub">Tools: ${a.tool_ids.length} | Prompt: ${a.system_prompt.substring(0, 60)}...</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="/agents/${a.id}/chat" class="btn btn-primary btn-sm" style="text-decoration:none;">Chat</a>
+                    <button class="btn btn-danger btn-sm" onclick="deleteAgent(${a.id})">Delete</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function createAgent() {
+    const checkboxes = document.querySelectorAll('#tool-picker input[type=checkbox]:checked');
+    const toolIds = Array.from(checkboxes).map(cb => cb.value);
+
+    const data = {
+        name: document.getElementById('agent-name').value,
+        system_prompt: document.getElementById('agent-prompt').value || 'You are a helpful assistant.',
+        llm_server_id: parseInt(document.getElementById('agent-llm').value),
+        tool_ids: toolIds,
+    };
+    await fetch('/api/agents/', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+    document.getElementById('agent-name').value = '';
+    document.getElementById('agent-prompt').value = '';
+    loadAgents();
+}
+
+async function deleteAgent(id) {
+    await fetch(`/api/agents/${id}`, { method: 'DELETE' });
+    loadAgents();
+}
+
+loadLLMs();
+loadToolPicker();
+loadAgents();
+</script>
+{% endblock %}

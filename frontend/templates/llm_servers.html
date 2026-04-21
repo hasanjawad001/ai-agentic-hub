@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}LLM Servers — AI Agentic Hub{% endblock %}
+{% block content %}
+<h1>LLM Servers</h1>
+
+<div class="card" id="add-form">
+    <h3 style="margin-bottom: 12px;">Add LLM Server</h3>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Name</label>
+            <input id="name" placeholder="my-local-qwen">
+        </div>
+        <div class="form-group">
+            <label>Provider</label>
+            <select id="provider">
+                <option value="ollama">Ollama</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>URL</label>
+            <input id="url" placeholder="http://localhost:11434">
+        </div>
+        <div class="form-group">
+            <label>Model</label>
+            <input id="model" placeholder="qwen3.5:9b">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>API Key (optional, for cloud providers)</label>
+        <input id="api_key" type="password" placeholder="sk-...">
+    </div>
+    <button class="btn btn-primary" onclick="addServer()">Add Server</button>
+</div>
+
+<div id="server-list"></div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadServers() {
+    const resp = await fetch('/api/llm-servers/');
+    const servers = await resp.json();
+    const list = document.getElementById('server-list');
+    list.innerHTML = servers.map(s => `
+        <div class="card">
+            <div class="card-row">
+                <div>
+                    <div class="card-title">${s.name}</div>
+                    <div class="card-sub">${s.provider} — ${s.url} — ${s.model}</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-sm" onclick="checkHealth(${s.id})">Health</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteServer(${s.id})">Delete</button>
+                    <span id="health-${s.id}" style="font-size:12px;"></span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function addServer() {
+    const data = {
+        name: document.getElementById('name').value,
+        provider: document.getElementById('provider').value,
+        url: document.getElementById('url').value,
+        model: document.getElementById('model').value,
+        api_key: document.getElementById('api_key').value || null,
+    };
+    await fetch('/api/llm-servers/', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+    document.getElementById('name').value = '';
+    document.getElementById('url').value = '';
+    document.getElementById('model').value = '';
+    document.getElementById('api_key').value = '';
+    loadServers();
+}
+
+async function deleteServer(id) {
+    await fetch(`/api/llm-servers/${id}`, { method: 'DELETE' });
+    loadServers();
+}
+
+async function checkHealth(id) {
+    const el = document.getElementById(`health-${id}`);
+    el.textContent = 'checking...';
+    const resp = await fetch(`/api/llm-servers/${id}/health`);
+    const data = await resp.json();
+    if (data.status === 'ok') {
+        el.innerHTML = `<span class="status-ok">OK</span> — ${(data.models || []).join(', ')}`;
+    } else {
+        el.innerHTML = `<span class="status-error">Error: ${data.error}</span>`;
+    }
+}
+
+loadServers();
+</script>
+{% endblock %}

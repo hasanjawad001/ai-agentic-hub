@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Agentic Hub{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e1e1e6; }
+        nav { background: #1a1b23; padding: 12px 24px; display: flex; gap: 24px; align-items: center; border-bottom: 1px solid #2a2b35; }
+        nav a { color: #8b8d98; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 6px; }
+        nav a:hover, nav a.active { color: #fff; background: #2a2b35; }
+        nav .logo { color: #7c5cfc; font-weight: 700; font-size: 16px; }
+        .container { max-width: 900px; margin: 32px auto; padding: 0 24px; }
+        h1 { font-size: 24px; margin-bottom: 24px; }
+        .card { background: #1a1b23; border: 1px solid #2a2b35; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .card-row { display: flex; justify-content: space-between; align-items: center; }
+        .card-title { font-weight: 600; }
+        .card-sub { color: #8b8d98; font-size: 13px; margin-top: 4px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .btn-primary { background: #7c5cfc; color: #fff; }
+        .btn-primary:hover { background: #6a4de0; }
+        .btn-danger { background: #e5484d; color: #fff; }
+        .btn-danger:hover { background: #c93c40; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 13px; color: #8b8d98; margin-bottom: 4px; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 8px 12px; background: #0f1117; border: 1px solid #2a2b35;
+            border-radius: 6px; color: #e1e1e6; font-size: 14px;
+        }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .status-ok { color: #30a46c; }
+        .status-error { color: #e5484d; }
+        .hidden { display: none; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #2a2b35; }
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+    <nav>
+        <span class="logo">AI Agentic Hub</span>
+        <a href="/">Home</a>
+        <a href="/llm-servers">LLM Servers</a>
+        <a href="/mcp-servers">MCP Servers</a>
+        <a href="/agents">Agents</a>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Chat — AI Agentic Hub{% endblock %}
+{% block extra_style %}
+    #chat-box { height: 500px; overflow-y: auto; background: #0f1117; border: 1px solid #2a2b35; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .msg { margin-bottom: 12px; }
+    .msg-user { text-align: right; }
+    .msg-user .bubble { background: #7c5cfc; display: inline-block; padding: 8px 14px; border-radius: 12px 12px 0 12px; max-width: 70%; }
+    .msg-assistant .bubble { background: #1a1b23; border: 1px solid #2a2b35; display: inline-block; padding: 8px 14px; border-radius: 12px 12px 12px 0; max-width: 70%; }
+    .msg-tool { font-size: 12px; color: #8b8d98; padding: 4px 0; }
+    .msg-tool .tool-name { color: #e5c07b; }
+    #input-row { display: flex; gap: 8px; }
+    #input-row input { flex: 1; }
+{% endblock %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h1 id="agent-title">Chat</h1>
+    <div>
+        <button class="btn btn-danger btn-sm" onclick="clearChat()">Clear History</button>
+        <a href="/agents" class="btn btn-sm" style="background:#2a2b35; color:#e1e1e6; text-decoration:none;">Back</a>
+    </div>
+</div>
+
+<div id="chat-box"></div>
+
+<div id="input-row">
+    <input id="user-input" placeholder="Type your message..." onkeydown="if(event.key==='Enter')sendMessage()">
+    <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const agentId = {{ agent_id }};
+
+async function loadAgent() {
+    const resp = await fetch(`/api/agents/${agentId}`);
+    const agent = await resp.json();
+    document.getElementById('agent-title').textContent = `Chat with ${agent.name}`;
+}
+
+function appendMessage(role, content, toolCalls) {
+    const box = document.getElementById('chat-box');
+
+    if (toolCalls && toolCalls.length > 0) {
+        for (const tc of toolCalls) {
+            box.innerHTML += `<div class="msg-tool">
+                <span class="tool-name">&rarr; ${tc.tool}</span>(${JSON.stringify(tc.args)})
+                <div style="margin-left: 16px; color: #6b6d78;">${tc.result.substring(0, 200)}${tc.result.length > 200 ? '...' : ''}</div>
+            </div>`;
+        }
+    }
+
+    if (content) {
+        const cls = role === 'user' ? 'msg-user' : 'msg-assistant';
+        box.innerHTML += `<div class="msg ${cls}"><div class="bubble">${content}</div></div>`;
+    }
+
+    box.scrollTop = box.scrollHeight;
+}
+
+async function sendMessage() {
+    const input = document.getElementById('user-input');
+    const message = input.value.trim();
+    if (!message) return;
+
+    input.value = '';
+    appendMessage('user', message);
+
+    const resp = await fetch(`/api/agents/${agentId}/chat`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message }),
+    });
+    const data = await resp.json();
+
+    appendMessage('assistant', data.response, data.tool_calls);
+}
+
+async function clearChat() {
+    await fetch(`/api/agents/${agentId}/clear`, { method: 'POST' });
+    document.getElementById('chat-box').innerHTML = '';
+}
+
+loadAgent();
+document.getElementById('user-input').focus();
+</script>
+{% endblock %}
