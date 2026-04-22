@@ -31,6 +31,26 @@ def get_agent(agent_id: int, session: Session = Depends(get_session)):
     return agent
 
 
+@router.put("/{agent_id}")
+async def update_agent(agent_id: int, request: Request, session: Session = Depends(get_session)):
+    agent = session.get(Agent, agent_id)
+    if not agent:
+        return {"error": "not found"}
+    body = await request.json()
+    if "name" in body:
+        agent.name = body["name"]
+    if "system_prompt" in body:
+        agent.system_prompt = body["system_prompt"]
+    if "llm_server_id" in body:
+        agent.llm_server_id = body["llm_server_id"]
+    if "tool_ids" in body:
+        agent.tool_ids = body["tool_ids"]
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return agent
+
+
 @router.delete("/{agent_id}")
 def delete_agent(agent_id: int, session: Session = Depends(get_session)):
     agent = session.get(Agent, agent_id)

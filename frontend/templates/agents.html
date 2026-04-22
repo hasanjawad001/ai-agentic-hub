@@ -71,16 +71,29 @@ async function loadAgents() {
     const agents = await resp.json();
     const list = document.getElementById('agent-list');
     list.innerHTML = agents.map(a => `
-        <div class="card">
+        <div class="card" id="agent-card-${a.id}">
             <div class="card-row">
                 <div>
                     <div class="card-title">${a.name}</div>
                     <div class="card-sub">Tools: ${a.tool_ids.length} | Prompt: ${a.system_prompt.substring(0, 60)}...</div>
                 </div>
                 <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="editAgent(${a.id})">Edit</button>
                     <a href="/agents/${a.id}/chat" class="btn btn-primary btn-sm" style="text-decoration:none;">Chat</a>
                     <button class="btn btn-danger btn-sm" onclick="deleteAgent(${a.id})">Delete</button>
                 </div>
+            </div>
+            <div id="edit-form-${a.id}" class="hidden" style="margin-top: 12px; border-top: 1px solid #2a2b35; padding-top: 12px;">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input id="edit-name-${a.id}" value="${a.name}">
+                </div>
+                <div class="form-group">
+                    <label>System Prompt</label>
+                    <textarea id="edit-prompt-${a.id}">${a.system_prompt}</textarea>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="saveAgent(${a.id})">Save</button>
+                <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="cancelEdit(${a.id})">Cancel</button>
             </div>
         </div>
     `).join('');
@@ -99,6 +112,23 @@ async function createAgent() {
     await fetch('/api/agents/', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
     document.getElementById('agent-name').value = '';
     document.getElementById('agent-prompt').value = '';
+    loadAgents();
+}
+
+function editAgent(id) {
+    document.getElementById(`edit-form-${id}`).classList.toggle('hidden');
+}
+
+function cancelEdit(id) {
+    document.getElementById(`edit-form-${id}`).classList.add('hidden');
+}
+
+async function saveAgent(id) {
+    const data = {
+        name: document.getElementById(`edit-name-${id}`).value,
+        system_prompt: document.getElementById(`edit-prompt-${id}`).value,
+    };
+    await fetch(`/api/agents/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
     loadAgents();
 }
 
