@@ -57,5 +57,9 @@ def int_to_string(number: float) -> str:
     return str(number)
 
 
-if __name__ == "__main__":
+def run():
     mcp.run(transport="streamable-http", host="0.0.0.0", port=3000)
+
+
+if __name__ == "__main__":
+    run()

@@ -1,21 +1,14 @@
-import json
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langgraph.prebuilt import create_react_agent
 from sqlmodel import Session
 
 from backend.models import Agent, LLMServer, MCPServer
 from backend.services import llm_service, mcp_service
 
-MAX_TURNS = 15
 
-
-async def resolve_tools(agent: Agent, session: Session) -> tuple[list[dict], dict]:
-    """Resolve agent's tool_ids into schemas and a mapping of tool_name -> mcp_server.
-
-    tool_ids format: ["mcp:SERVER_ID:TOOL_NAME", ...]
-    Returns: (tool_schemas, tool_map) where tool_map = {tool_name: MCPServer}
-    """
-    tool_schemas = []
-    tool_map = {}
-
+async def resolve_tools(agent: Agent, session: Session):
+    """Resolve agent's tool_ids into LangChain StructuredTools."""
+    lc_tools = []
     server_tools_cache = {}
 
     for tool_id in agent.tool_ids:
@@ -38,59 +31,52 @@ async def resolve_tools(agent: Agent, session: Session) -> tuple[list[dict], dic
 
         mcp_server, tools = server_tools_cache[server_id]
 
-        for tool in tools:
-            if tool.get("name") == tool_name:
-                tool_map[tool_name] = mcp_server
-                tool_schemas.append({
-                    "type": "function",
-                    "function": {
-                        "name": tool["name"],
-                        "description": tool.get("description", ""),
-                        "parameters": tool.get("inputSchema", {"type": "object", "properties": {}}),
-                    },
-                })
+        matching = [t for t in tools if t.get("name") == tool_name]
+        if matching:
+            converted = mcp_service.mcp_tools_to_langchain(mcp_server, matching)
+            lc_tools.extend(converted)
 
-    return tool_schemas, tool_map
+    return lc_tools
 
 
 async def run_agent(agent: Agent, user_message: str, history: list[dict], session: Session) -> dict:
-    """Run the agentic loop for a single agent."""
     llm_server = session.get(LLMServer, agent.llm_server_id)
     if not llm_server:
         return {"response": "Error: LLM server not found.", "history": history, "tool_calls": []}
 
-    tool_schemas, tool_map = await resolve_tools(agent, session)
+    llm = llm_service.get_llm(llm_server)
+    tools = await resolve_tools(agent, session)
 
-    messages = [{"role": "system", "content": agent.system_prompt}]
-    messages.extend(history)
-    messages.append({"role": "user", "content": user_message})
+    react_agent = create_react_agent(llm, tools)
 
+    input_messages = [SystemMessage(content=agent.system_prompt)]
+    for msg in history:
+        if msg["role"] == "user":
+            input_messages.append(HumanMessage(content=msg["content"]))
+        elif msg["role"] == "assistant":
+            input_messages.append(AIMessage(content=msg["content"]))
+    input_messages.append(HumanMessage(content=user_message))
+
+    result = await react_agent.ainvoke({"messages": input_messages})
+
+    messages = result.get("messages", [])
+    final_content = ""
     all_tool_calls = []
 
-    for turn in range(MAX_TURNS):
-        response = llm_service.chat(llm_server, messages, tools=tool_schemas if tool_schemas else None)
-        messages.append(response)
-
-        if not response.get("tool_calls"):
-            break
-
-        for tc in response["tool_calls"]:
-            func = tc["function"]
-            name = func["name"]
-            args = func["arguments"]
-            if isinstance(args, str):
-                args = json.loads(args)
-
-            mcp_server = tool_map.get(name)
-            if mcp_server:
-                result = await mcp_service.call_tool(mcp_server, name, args)
-            else:
-                result = f"Error: tool '{name}' not found"
-
-            all_tool_calls.append({"tool": name, "args": args, "result": result[:500]})
-            messages.append({"role": "tool", "content": result})
-
-    final_content = response.get("content", "") if response else ""
+    for msg in messages:
+        if isinstance(msg, AIMessage):
+            if msg.content:
+                final_content = msg.content
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    all_tool_calls.append({
+                        "tool": tc["name"],
+                        "args": tc["args"],
+                        "result": "",
+                    })
+        elif isinstance(msg, ToolMessage):
+            if all_tool_calls and not all_tool_calls[-1]["result"]:
+                all_tool_calls[-1]["result"] = str(msg.content)[:500]
 
     updated_history = history + [
         {"role": "user", "content": user_message},

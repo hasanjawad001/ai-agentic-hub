@@ -17,13 +17,26 @@ dependencies = [
     "openai",
     "httpx",
     "python-multipart",
+    "fastmcp",
+    "mcp",
+    "langchain",
+    "langchain-core",
+    "langchain-ollama",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langgraph",
 ]
 
 [project.scripts]
-ai-agentic-hub = "backend.main:run"
+start-hub = "backend.main:run"
+start-mcp = "examples.test_mcp_server:run"
 
-[tool.hatch.build.targets.wheel]
-packages = ["backend"]
+[tool.hatch.build]
+include = [
+    "backend/**",
+    "examples/**",
+    "frontend/**",
+]
 
 [build-system]
 requires = ["hatchling"]
