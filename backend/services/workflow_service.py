@@ -75,12 +75,22 @@ def build_workflow_graph(workflow: Workflow, session: Session):
             task = node_data.get("task", "Process the current state and produce a result.")
             prompt = f"Current workflow state:\n{state_summary}\n\nYour task: {task}"
 
-            result = await agent_service.run_agent(agent, prompt, [], db_session)
+            try:
+                result = await agent_service.run_agent(agent, prompt, [], db_session)
+            except Exception as e:
+                return {
+                    "current_node": node_data["id"],
+                    "state_data": {f"{node_name}_output": f"Error: {e}"},
+                    "steps": [{"node_id": node_data["id"], "name": node_name, "type": "agent", "output": f"Error: {str(e)[:200]}", "error": True}],
+                    "iteration": state["iteration"] + 1,
+                }
 
+            is_error = result["response"].startswith("Error:")
             new_state_data = {f"{node_name}_output": result["response"]}
-            parsed = parse_json_from_text(result["response"])
-            if parsed:
-                new_state_data.update(parsed)
+            if not is_error:
+                parsed = parse_json_from_text(result["response"])
+                if parsed:
+                    new_state_data.update(parsed)
 
             step = {
                 "node_id": node_data["id"],
@@ -88,6 +98,7 @@ def build_workflow_graph(workflow: Workflow, session: Session):
                 "type": "agent",
                 "output": result["response"],
                 "tool_calls": result.get("tool_calls", []),
+                "error": is_error,
             }
 
             return {
@@ -208,11 +219,18 @@ def evaluate_condition(condition: str, state: dict) -> bool:
     return True
 
 
-async def run_workflow(workflow: Workflow, initial_input: str, session: Session) -> dict:
+async def run_workflow(workflow: Workflow, initial_input: str, session: Session, previous_context: list[dict] | None = None) -> dict:
     compiled = build_workflow_graph(workflow, session)
 
+    context_summary = ""
+    if previous_context:
+        context_summary = "Previous conversation:\n"
+        for ctx in previous_context:
+            context_summary += f"  User: {ctx['input']}\n  Result: {ctx['final_output'][:200]}\n"
+        context_summary += "\nNew request: "
+
     initial_state: WorkflowState = {
-        "input": initial_input,
+        "input": context_summary + initial_input if context_summary else initial_input,
         "current_node": "",
         "state_data": {},
         "steps": [],

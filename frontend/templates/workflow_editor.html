@@ -101,14 +101,17 @@
 
     <div class="run-panel" id="run-panel">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h3 style="margin: 0;">Workflow Run</h3>
-            <button class="btn btn-danger btn-sm" onclick="closeRunPanel()">Close</button>
+            <h3 style="margin: 0;">Workflow Chat</h3>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="clearWorkflowChat()">Clear History</button>
+                <button class="btn btn-danger btn-sm" onclick="closeRunPanel()">Close</button>
+            </div>
         </div>
-        <div class="form-group" style="margin-bottom: 12px;">
-            <input id="run-input" placeholder="Enter initial input for the workflow..." style="width: 80%; padding: 8px; background: #0f1117; border: 1px solid #2a2b35; border-radius: 4px; color: #e1e1e6;">
-            <button class="btn btn-success btn-sm" onclick="runWorkflow()">Execute</button>
+        <div id="run-history" style="max-height: 30vh; overflow-y: auto; margin-bottom: 12px;"></div>
+        <div style="display: flex; gap: 8px;">
+            <input id="run-input" placeholder="Enter task or follow-up..." style="flex: 1; padding: 8px; background: #0f1117; border: 1px solid #2a2b35; border-radius: 4px; color: #e1e1e6;" onkeydown="if(event.key==='Enter')runWorkflow()">
+            <button class="btn btn-success btn-sm" id="run-btn" onclick="runWorkflow()">Execute</button>
         </div>
-        <div id="run-steps"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
@@ -417,11 +420,17 @@ function closeRunPanel() {
 }
 
 async function runWorkflow() {
-    const input = document.getElementById('run-input').value;
-    const stepsEl = document.getElementById('run-steps');
-    const execBtn = document.querySelector('#run-panel .btn-success');
+    const input = document.getElementById('run-input').value.trim();
+    if (!input) return;
 
-    stepsEl.innerHTML = '<div style="color: #8b8d98;"><span class="spinner"></span> Running workflow...</div>';
+    const historyEl = document.getElementById('run-history');
+    const execBtn = document.getElementById('run-btn');
+
+    historyEl.innerHTML += `<div style="text-align: right; margin-bottom: 8px;"><span style="background: #7c5cfc; padding: 6px 12px; border-radius: 12px 12px 0 12px; display: inline-block; max-width: 70%; font-size: 13px;">${input}</span></div>`;
+    historyEl.innerHTML += '<div style="color: #8b8d98; margin-bottom: 8px;"><span class="spinner"></span> Running...</div>';
+    historyEl.scrollTop = historyEl.scrollHeight;
+
+    document.getElementById('run-input').value = '';
     execBtn.disabled = true;
     execBtn.textContent = 'Running...';
 
@@ -435,7 +444,10 @@ async function runWorkflow() {
         });
         const result = await resp.json();
 
-        stepsEl.innerHTML = result.steps.map(step => `
+        const spinnerEl = historyEl.querySelector('.spinner')?.parentElement;
+        if (spinnerEl) spinnerEl.remove();
+
+        const stepsHTML = result.steps.map(step => `
             <div class="run-step ${step.error ? 'error' : 'done'}">
                 <div class="step-name">${step.name} <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#2a2b35;">${step.type}</span></div>
                 <div class="step-output">${(step.output || '').substring(0, 500)}</div>
@@ -444,12 +456,23 @@ async function runWorkflow() {
                 ).join('') : ''}
             </div>
         `).join('');
+
+        historyEl.innerHTML += stepsHTML;
+        historyEl.innerHTML += '<hr style="border-color: #2a2b35; margin: 12px 0;">';
+        historyEl.scrollTop = historyEl.scrollHeight;
     } catch (e) {
-        stepsEl.innerHTML = `<div class="run-step error"><div class="step-name">Error</div><div class="step-output">${e.message}</div></div>`;
+        const spinnerEl = historyEl.querySelector('.spinner')?.parentElement;
+        if (spinnerEl) spinnerEl.remove();
+        historyEl.innerHTML += `<div class="run-step error"><div class="step-name">Error</div><div class="step-output">${e.message}</div></div>`;
     } finally {
         execBtn.disabled = false;
         execBtn.textContent = 'Execute';
     }
+}
+
+async function clearWorkflowChat() {
+    await fetch(`/api/workflows/${workflowId}/clear`, { method: 'POST' });
+    document.getElementById('run-history').innerHTML = '';
 }
 
 init();

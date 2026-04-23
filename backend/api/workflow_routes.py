@@ -7,6 +7,8 @@ from backend.services import workflow_service
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
+workflow_contexts: dict[int, list[dict]] = {}
+
 
 @router.get("/")
 def list_workflows(session: Session = Depends(get_session)):
@@ -50,6 +52,7 @@ def delete_workflow(workflow_id: int, session: Session = Depends(get_session)):
     workflow = session.get(Workflow, workflow_id)
     if not workflow:
         return {"error": "not found"}
+    workflow_contexts.pop(workflow_id, None)
     session.delete(workflow)
     session.commit()
     return {"ok": True}
@@ -63,6 +66,26 @@ async def run_workflow(workflow_id: int, request: Request, session: Session = De
 
     body = await request.json()
     initial_input = body.get("input", "")
+    previous_context = workflow_contexts.get(workflow_id, [])
 
-    result = await workflow_service.run_workflow(workflow, initial_input, session)
+    try:
+        result = await workflow_service.run_workflow(workflow, initial_input, session, previous_context)
+    except Exception as e:
+        return {
+            "state": {},
+            "steps": [{"node_id": "error", "name": "Workflow Error", "type": "error", "output": f"Workflow failed: {str(e)[:300]}", "error": True}],
+            "final_output": f"Error: {e}",
+        }
+
+    workflow_contexts.setdefault(workflow_id, []).append({
+        "input": initial_input,
+        "final_output": result.get("final_output", ""),
+    })
+
     return result
+
+
+@router.post("/{workflow_id}/clear")
+def clear_context(workflow_id: int):
+    workflow_contexts.pop(workflow_id, None)
+    return {"ok": True}

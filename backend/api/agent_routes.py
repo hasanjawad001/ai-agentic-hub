@@ -72,7 +72,13 @@ async def chat(agent_id: int, request: Request, session: Session = Depends(get_s
     message = body.get("message", "")
     history = chat_histories.get(agent_id, [])
 
-    result = await agent_service.run_agent(agent, message, history, session)
+    try:
+        result = await agent_service.run_agent(agent, message, history, session)
+    except Exception as e:
+        return {
+            "response": f"Error: {str(e)[:200]}",
+            "tool_calls": [],
+        }
 
     chat_histories[agent_id] = result["history"]
 

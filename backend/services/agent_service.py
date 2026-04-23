@@ -1,3 +1,4 @@
+import asyncio
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from sqlmodel import Session
@@ -5,9 +6,10 @@ from sqlmodel import Session
 from backend.models import Agent, LLMServer, MCPServer
 from backend.services import llm_service, mcp_service
 
+AGENT_TIMEOUT = 120
+
 
 async def resolve_tools(agent: Agent, session: Session):
-    """Resolve agent's tool_ids into LangChain StructuredTools."""
     lc_tools = []
     server_tools_cache = {}
 
@@ -26,15 +28,21 @@ async def resolve_tools(agent: Agent, session: Session):
             mcp_server = session.get(MCPServer, server_id)
             if not mcp_server:
                 continue
-            tools = await mcp_service.discover_tools(mcp_server)
+            try:
+                tools = await mcp_service.discover_tools(mcp_server)
+            except Exception:
+                continue
             server_tools_cache[server_id] = (mcp_server, tools)
 
         mcp_server, tools = server_tools_cache[server_id]
 
         matching = [t for t in tools if t.get("name") == tool_name]
         if matching:
-            converted = mcp_service.mcp_tools_to_langchain(mcp_server, matching)
-            lc_tools.extend(converted)
+            try:
+                converted = mcp_service.mcp_tools_to_langchain(mcp_server, matching)
+                lc_tools.extend(converted)
+            except Exception:
+                continue
 
     return lc_tools
 
@@ -44,8 +52,15 @@ async def run_agent(agent: Agent, user_message: str, history: list[dict], sessio
     if not llm_server:
         return {"response": "Error: LLM server not found.", "history": history, "tool_calls": []}
 
-    llm = llm_service.get_llm(llm_server)
-    tools = await resolve_tools(agent, session)
+    try:
+        llm = llm_service.get_llm(llm_server)
+    except Exception as e:
+        return {"response": f"Error connecting to LLM: {e}", "history": history, "tool_calls": []}
+
+    try:
+        tools = await resolve_tools(agent, session)
+    except Exception as e:
+        tools = []
 
     react_agent = create_react_agent(llm, tools)
 
@@ -57,7 +72,18 @@ async def run_agent(agent: Agent, user_message: str, history: list[dict], sessio
             input_messages.append(AIMessage(content=msg["content"]))
     input_messages.append(HumanMessage(content=user_message))
 
-    result = await react_agent.ainvoke({"messages": input_messages})
+    try:
+        result = await asyncio.wait_for(
+            react_agent.ainvoke({"messages": input_messages}),
+            timeout=AGENT_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        return {"response": f"Error: Agent timed out after {AGENT_TIMEOUT}s.", "history": history, "tool_calls": []}
+    except Exception as e:
+        error_msg = str(e)
+        if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+            return {"response": f"Error: Could not connect to LLM server ({llm_server.url}). Is it running?", "history": history, "tool_calls": []}
+        return {"response": f"Error: Agent failed — {error_msg[:200]}", "history": history, "tool_calls": []}
 
     messages = result.get("messages", [])
     final_content = ""
@@ -77,6 +103,9 @@ async def run_agent(agent: Agent, user_message: str, history: list[dict], sessio
         elif isinstance(msg, ToolMessage):
             if all_tool_calls and not all_tool_calls[-1]["result"]:
                 all_tool_calls[-1]["result"] = str(msg.content)[:500]
+
+    if not final_content and not all_tool_calls:
+        final_content = "Agent returned no response."
 
     updated_history = history + [
         {"role": "user", "content": user_message},

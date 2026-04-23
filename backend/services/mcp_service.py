@@ -45,12 +45,15 @@ async def call_tool(server: MCPServer, tool_name: str, arguments: dict) -> str:
 
 def _make_mcp_tool_func(server: MCPServer, tool_name: str):
     def tool_func(**kwargs) -> str:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, call_tool(server, tool_name, kwargs)).result()
-        return asyncio.run(call_tool(server, tool_name, kwargs))
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    return pool.submit(asyncio.run, call_tool(server, tool_name, kwargs)).result()
+            return asyncio.run(call_tool(server, tool_name, kwargs))
+        except Exception as e:
+            return f"Error calling tool {tool_name}: {e}"
     return tool_func
 
 
