@@ -92,11 +92,15 @@ async function sendMessage() {
                         currentBubble.textContent += data.content;
                         scrollToBottom();
                     } else if (data.type === 'tool_call') {
-                        toolCallsHTML += `<div class="msg-tool">
-                            <span class="tool-name">&rarr; ${data.tool}</span>(${JSON.stringify(data.args)})
-                        </div>`;
-                        currentBubble.parentElement.parentElement.insertAdjacentHTML('beforebegin',
-                            `<div class="msg-tool"><span class="tool-name">&rarr; ${data.tool}</span>(${JSON.stringify(data.args)})</div>`);
+                        const toolDiv = document.createElement('div');
+                        toolDiv.className = 'msg-tool';
+                        toolDiv.innerHTML = `<span class="tool-name">&rarr; ${data.tool}</span>(${JSON.stringify(data.args)})`;
+                        const bubbleParent = currentBubble.closest('.msg');
+                        if (bubbleParent) {
+                            box.insertBefore(toolDiv, bubbleParent);
+                        } else {
+                            box.appendChild(toolDiv);
+                        }
                         scrollToBottom();
                     } else if (data.type === 'tool_result') {
                         const toolDivs = box.querySelectorAll('.msg-tool');

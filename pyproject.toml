@@ -1,6 +1,6 @@
 [project]
 name = "ai-agentic-hub"
-version = "0.1.0"
+version = "0.2.0"
 description = "A web GUI to visually build AI agents and workflows using local LLMs and MCP tool servers"
 readme = "README.md"
 license = "MIT"

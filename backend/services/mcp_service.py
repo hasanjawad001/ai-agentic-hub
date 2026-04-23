@@ -1,5 +1,7 @@
 import asyncio
+from typing import Optional
 from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Field, create_model
 from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 
@@ -46,15 +48,33 @@ async def call_tool(server: MCPServer, tool_name: str, arguments: dict) -> str:
 def _make_mcp_tool_func(server: MCPServer, tool_name: str):
     def tool_func(**kwargs) -> str:
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    return pool.submit(asyncio.run, call_tool(server, tool_name, kwargs)).result()
-            return asyncio.run(call_tool(server, tool_name, kwargs))
+            if "kwargs" in kwargs and len(kwargs) == 1:
+                kwargs = kwargs["kwargs"]
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(call_tool(server, tool_name, kwargs))
+            finally:
+                loop.close()
         except Exception as e:
             return f"Error calling tool {tool_name}: {e}"
     return tool_func
+
+
+def _build_args_schema(tool_name: str, schema: dict) -> type[BaseModel]:
+    properties = schema.get("properties", {})
+    required = set(schema.get("required", []))
+    type_map = {"string": str, "integer": int, "number": float, "boolean": bool}
+
+    fields = {}
+    for prop_name, prop_info in properties.items():
+        py_type = type_map.get(prop_info.get("type", "string"), str)
+        description = prop_info.get("description", "")
+        if prop_name in required:
+            fields[prop_name] = (py_type, Field(description=description))
+        else:
+            fields[prop_name] = (Optional[py_type], Field(default=None, description=description))
+
+    return create_model(f"{tool_name}_args", **fields)
 
 
 def mcp_tools_to_langchain(server: MCPServer, tools: list[dict]) -> list[StructuredTool]:
@@ -64,22 +84,13 @@ def mcp_tools_to_langchain(server: MCPServer, tools: list[dict]) -> list[Structu
             continue
 
         schema = tool.get("inputSchema", {})
-        properties = schema.get("properties", {})
-        required = schema.get("required", [])
-
-        args_schema_fields = {}
-        for prop_name, prop_info in properties.items():
-            prop_type = prop_info.get("type", "string")
-            type_map = {"string": str, "integer": int, "number": float, "boolean": bool}
-            args_schema_fields[prop_name] = (
-                type_map.get(prop_type, str),
-                prop_info.get("description", ""),
-            )
+        args_schema = _build_args_schema(tool["name"], schema)
 
         lc_tool = StructuredTool.from_function(
             func=_make_mcp_tool_func(server, tool["name"]),
             name=tool["name"],
             description=tool.get("description", ""),
+            args_schema=args_schema,
         )
         lc_tools.append(lc_tool)
 

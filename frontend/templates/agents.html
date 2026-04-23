@@ -20,7 +20,7 @@
         <textarea id="agent-prompt" placeholder="You are a helpful assistant..."></textarea>
     </div>
     <div class="form-group">
-        <label>Tools (select from MCP servers)</label>
+        <label>Tools — <a href="#" style="color:#7c5cfc;font-size:12px;" onclick="event.preventDefault();toggleAll('tool-picker',true)">select all</a> / <a href="#" style="color:#8b8d98;font-size:12px;" onclick="event.preventDefault();toggleAll('tool-picker',false)">none</a></label>
         <div id="tool-picker" style="max-height: 200px; overflow-y: auto; background: #0f1117; border: 1px solid #2a2b35; border-radius: 6px; padding: 8px;"></div>
     </div>
     <button class="btn btn-primary" onclick="createAgent()">Create Agent</button>
@@ -31,59 +31,49 @@
 {% endblock %}
 {% block scripts %}
 <script>
-let allTools = [];
-
 async function loadLLMs() {
     const resp = await fetch('/api/llm-servers/');
     const servers = await resp.json();
-    const sel = document.getElementById('agent-llm');
-    sel.innerHTML = servers.map(s => `<option value="${s.id}">${s.name} (${s.model})</option>`).join('');
+    document.getElementById('agent-llm').innerHTML = servers.map(s =>
+        `<option value="${s.id}">${s.name} (${s.model})</option>`
+    ).join('');
 }
 
 async function loadToolPicker() {
     const resp = await fetch('/api/mcp-servers/');
     const servers = await resp.json();
     const picker = document.getElementById('tool-picker');
-    allTools = [];
     let html = '';
-
     for (const server of servers) {
         const toolResp = await fetch(`/api/mcp-servers/${server.id}/tools`);
         const tools = await toolResp.json();
         if (tools.length && !tools[0]?.error) {
-            html += `<div style="margin-bottom: 8px;"><strong style="font-size: 12px; color: #8b8d98;">${server.name}</strong></div>`;
+            html += `<div style="font-size:11px;color:#8b8d98;margin-bottom:2px;">${server.name}</div>`;
             for (const t of tools) {
-                const toolId = `mcp:${server.id}:${t.name}`;
-                allTools.push(toolId);
-                html += `<label style="display: block; padding: 2px 0; font-size: 13px; cursor: pointer;">
-                    <input type="checkbox" value="${toolId}"> ${t.name}
-                    <span style="color: #8b8d98; font-size: 11px;">${t.description || ''}</span>
-                </label>`;
+                html += `<label style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;background:#2a2b35;border-radius:3px;font-size:12px;cursor:pointer;"><input type="checkbox" value="mcp:${server.id}:${t.name}" style="margin-right:3px;vertical-align:middle;">${t.name}</label>`;
             }
         }
     }
-
-    picker.innerHTML = html || '<span style="color: #8b8d98; font-size: 13px;">No MCP servers added yet. Add one first.</span>';
+    picker.innerHTML = html || '<span style="color:#8b8d98;font-size:13px;">No MCP servers added yet.</span>';
 }
 
 async function loadAgents() {
     const resp = await fetch('/api/agents/');
     const agents = await resp.json();
-    const list = document.getElementById('agent-list');
-    list.innerHTML = agents.map(a => `
-        <div class="card" id="agent-card-${a.id}">
+    document.getElementById('agent-list').innerHTML = agents.map(a => `
+        <div class="card">
             <div class="card-row">
                 <div>
                     <div class="card-title">${a.name}</div>
                     <div class="card-sub">Tools: ${a.tool_ids.length} | Prompt: ${a.system_prompt.substring(0, 60)}...</div>
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div style="display:flex;gap:8px;">
                     <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="editAgent(${a.id})">Edit</button>
                     <a href="/agents/${a.id}/chat" class="btn btn-primary btn-sm" style="text-decoration:none;">Chat</a>
                     <button class="btn btn-danger btn-sm" onclick="deleteAgent(${a.id})">Delete</button>
                 </div>
             </div>
-            <div id="edit-form-${a.id}" class="hidden" style="margin-top: 12px; border-top: 1px solid #2a2b35; padding-top: 12px;">
+            <div id="edit-form-${a.id}" class="hidden" style="margin-top:12px;border-top:1px solid #2a2b35;padding-top:12px;">
                 <div class="form-group">
                     <label>Name</label>
                     <input id="edit-name-${a.id}" value="${a.name}">
@@ -91,6 +81,10 @@ async function loadAgents() {
                 <div class="form-group">
                     <label>System Prompt</label>
                     <textarea id="edit-prompt-${a.id}">${a.system_prompt}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Tools — <a href="#" style="color:#7c5cfc;font-size:12px;" onclick="event.preventDefault();toggleAll('edit-tools-${a.id}',true)">select all</a> / <a href="#" style="color:#8b8d98;font-size:12px;" onclick="event.preventDefault();toggleAll('edit-tools-${a.id}',false)">none</a></label>
+                    <div id="edit-tools-${a.id}" style="max-height:150px;overflow-y:auto;background:#0f1117;border:1px solid #2a2b35;border-radius:6px;padding:8px;"></div>
                 </div>
                 <button class="btn btn-primary btn-sm" onclick="saveAgent(${a.id})">Save</button>
                 <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="cancelEdit(${a.id})">Cancel</button>
@@ -102,7 +96,6 @@ async function loadAgents() {
 async function createAgent() {
     const checkboxes = document.querySelectorAll('#tool-picker input[type=checkbox]:checked');
     const toolIds = Array.from(checkboxes).map(cb => cb.value);
-
     const data = {
         name: document.getElementById('agent-name').value,
         system_prompt: document.getElementById('agent-prompt').value || 'You are a helpful assistant.',
@@ -115,8 +108,34 @@ async function createAgent() {
     loadAgents();
 }
 
-function editAgent(id) {
-    document.getElementById(`edit-form-${id}`).classList.toggle('hidden');
+async function editAgent(id) {
+    const form = document.getElementById(`edit-form-${id}`);
+    form.classList.toggle('hidden');
+    if (!form.classList.contains('hidden')) {
+        const agentResp = await fetch(`/api/agents/${id}`);
+        const agent = await agentResp.json();
+        const picker = document.getElementById(`edit-tools-${id}`);
+        const mcpResp = await fetch('/api/mcp-servers/');
+        const servers = await mcpResp.json();
+        let html = '';
+        for (const server of servers) {
+            const toolResp = await fetch(`/api/mcp-servers/${server.id}/tools`);
+            const tools = await toolResp.json();
+            if (tools.length && !tools[0]?.error) {
+                html += `<div style="font-size:11px;color:#8b8d98;margin-bottom:2px;">${server.name}</div>`;
+                for (const t of tools) {
+                    const toolId = `mcp:${server.id}:${t.name}`;
+                    const checked = agent.tool_ids.includes(toolId) ? 'checked' : '';
+                    html += `<label style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;background:#2a2b35;border-radius:3px;font-size:12px;cursor:pointer;"><input type="checkbox" class="edit-tool-cb-${id}" value="${toolId}" ${checked} style="margin-right:3px;vertical-align:middle;">${t.name}</label>`;
+                }
+            }
+        }
+        picker.innerHTML = html || '<span style="color:#8b8d98;font-size:13px;">No MCP servers.</span>';
+    }
+}
+
+function toggleAll(id, checked) {
+    document.querySelectorAll(`#${id} input[type=checkbox]`).forEach(cb => cb.checked = checked);
 }
 
 function cancelEdit(id) {
@@ -124,9 +143,12 @@ function cancelEdit(id) {
 }
 
 async function saveAgent(id) {
+    const checkboxes = document.querySelectorAll(`.edit-tool-cb-${id}:checked`);
+    const toolIds = Array.from(checkboxes).map(cb => cb.value);
     const data = {
         name: document.getElementById(`edit-name-${id}`).value,
         system_prompt: document.getElementById(`edit-prompt-${id}`).value,
+        tool_ids: toolIds,
     };
     await fetch(`/api/agents/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
     loadAgents();
