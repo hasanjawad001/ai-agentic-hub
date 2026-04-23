@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlmodel import Session, select
 
 from backend.database import get_session
@@ -15,6 +15,21 @@ def list_servers(session: Session = Depends(get_session)):
 
 @router.post("/")
 def create_server(server: MCPServer, session: Session = Depends(get_session)):
+    session.add(server)
+    session.commit()
+    session.refresh(server)
+    return server
+
+
+@router.put("/{server_id}")
+async def update_server(server_id: int, request: Request, session: Session = Depends(get_session)):
+    server = session.get(MCPServer, server_id)
+    if not server:
+        return {"error": "not found"}
+    body = await request.json()
+    for field in ("name", "url"):
+        if field in body:
+            setattr(server, field, body[field])
     session.add(server)
     session.commit()
     session.refresh(server)

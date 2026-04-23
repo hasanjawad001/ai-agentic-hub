@@ -50,13 +50,46 @@ async function loadServers() {
             <div class="card-row">
                 <div>
                     <div class="card-title">${s.name}</div>
-                    <div class="card-sub">${s.provider} — ${s.url} — ${s.model}</div>
+                    <div class="card-sub">${s.provider} — ${s.url || '(default)'} — ${s.model}</div>
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: center;">
                     <button class="btn btn-primary btn-sm" onclick="checkHealth(${s.id})">Health</button>
+                    <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="editServer(${s.id})">Edit</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteServer(${s.id})">Delete</button>
                     <span id="health-${s.id}" style="font-size:12px;"></span>
                 </div>
+            </div>
+            <div id="edit-form-${s.id}" class="hidden" style="margin-top: 12px; border-top: 1px solid #2a2b35; padding-top: 12px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input id="edit-name-${s.id}" value="${s.name}">
+                    </div>
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <select id="edit-provider-${s.id}">
+                            <option value="ollama" ${s.provider === 'ollama' ? 'selected' : ''}>Ollama</option>
+                            <option value="openai" ${s.provider === 'openai' ? 'selected' : ''}>OpenAI</option>
+                            <option value="anthropic" ${s.provider === 'anthropic' ? 'selected' : ''}>Anthropic</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>URL</label>
+                        <input id="edit-url-${s.id}" value="${s.url || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <input id="edit-model-${s.id}" value="${s.model}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input id="edit-apikey-${s.id}" type="password" value="${s.api_key || ''}" placeholder="Leave empty to keep current">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="saveServer(${s.id})">Save</button>
+                <button class="btn btn-sm" style="background:#2a2b35;color:#e1e1e6;" onclick="cancelEdit(${s.id})">Cancel</button>
             </div>
         </div>
     `).join('');
@@ -78,7 +111,28 @@ async function addServer() {
     loadServers();
 }
 
+function editServer(id) {
+    document.getElementById(`edit-form-${id}`).classList.toggle('hidden');
+}
+
+function cancelEdit(id) {
+    document.getElementById(`edit-form-${id}`).classList.add('hidden');
+}
+
+async function saveServer(id) {
+    const data = {
+        name: document.getElementById(`edit-name-${id}`).value,
+        provider: document.getElementById(`edit-provider-${id}`).value,
+        url: document.getElementById(`edit-url-${id}`).value,
+        model: document.getElementById(`edit-model-${id}`).value,
+        api_key: document.getElementById(`edit-apikey-${id}`).value || null,
+    };
+    await fetch(`/api/llm-servers/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+    loadServers();
+}
+
 async function deleteServer(id) {
+    if (!confirm('Delete this LLM server?')) return;
     await fetch(`/api/llm-servers/${id}`, { method: 'DELETE' });
     loadServers();
 }

@@ -57,6 +57,8 @@
         .run-step.error { background: #2e1a1a; border: 1px solid #e5484d; }
         .run-step .step-name { font-weight: 600; }
         .run-step .step-output { color: #8b8d98; margin-top: 4px; font-size: 12px; white-space: pre-wrap; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #2a2b35; border-top: 2px solid #7c5cfc; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -417,26 +419,37 @@ function closeRunPanel() {
 async function runWorkflow() {
     const input = document.getElementById('run-input').value;
     const stepsEl = document.getElementById('run-steps');
-    stepsEl.innerHTML = '<div style="color: #8b8d98;">Running...</div>';
+    const execBtn = document.querySelector('#run-panel .btn-success');
+
+    stepsEl.innerHTML = '<div style="color: #8b8d98;"><span class="spinner"></span> Running workflow...</div>';
+    execBtn.disabled = true;
+    execBtn.textContent = 'Running...';
 
     await saveWorkflow();
 
-    const resp = await fetch(`/api/workflows/${workflowId}/run`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ input }),
-    });
-    const result = await resp.json();
+    try {
+        const resp = await fetch(`/api/workflows/${workflowId}/run`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ input }),
+        });
+        const result = await resp.json();
 
-    stepsEl.innerHTML = result.steps.map(step => `
-        <div class="run-step ${step.error ? 'error' : 'done'}">
-            <div class="step-name">${step.name} <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#2a2b35;">${step.type}</span></div>
-            <div class="step-output">${(step.output || '').substring(0, 500)}</div>
-            ${step.tool_calls ? step.tool_calls.map(tc =>
-                `<div class="step-output" style="color: #e5c07b;">&rarr; ${tc.tool}(${JSON.stringify(tc.args)}) = ${tc.result.substring(0, 200)}</div>`
-            ).join('') : ''}
-        </div>
-    `).join('');
+        stepsEl.innerHTML = result.steps.map(step => `
+            <div class="run-step ${step.error ? 'error' : 'done'}">
+                <div class="step-name">${step.name} <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#2a2b35;">${step.type}</span></div>
+                <div class="step-output">${(step.output || '').substring(0, 500)}</div>
+                ${step.tool_calls ? step.tool_calls.map(tc =>
+                    `<div class="step-output" style="color: #e5c07b;">&rarr; ${tc.tool}(${JSON.stringify(tc.args)}) = ${tc.result.substring(0, 200)}</div>`
+                ).join('') : ''}
+            </div>
+        `).join('');
+    } catch (e) {
+        stepsEl.innerHTML = `<div class="run-step error"><div class="step-name">Error</div><div class="step-output">${e.message}</div></div>`;
+    } finally {
+        execBtn.disabled = false;
+        execBtn.textContent = 'Execute';
+    }
 }
 
 init();

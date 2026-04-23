@@ -54,6 +54,7 @@ async function createWorkflow() {
 }
 
 async function deleteWorkflow(id) {
+    if (!confirm('Delete this workflow?')) return;
     await fetch(`/api/workflows/${id}`, { method: 'DELETE' });
     loadWorkflows();
 }

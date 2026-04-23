@@ -133,6 +133,7 @@ async function saveAgent(id) {
 }
 
 async function deleteAgent(id) {
+    if (!confirm('Delete this agent?')) return;
     await fetch(`/api/agents/${id}`, { method: 'DELETE' });
     loadAgents();
 }
