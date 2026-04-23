@@ -117,3 +117,68 @@ async def run_agent(agent: Agent, user_message: str, history: list[dict], sessio
         "history": updated_history,
         "tool_calls": all_tool_calls,
     }
+
+
+async def stream_agent(agent: Agent, user_message: str, history: list[dict], session: Session):
+    """Yields SSE events: token, tool_call, tool_result, done, error."""
+    import json
+
+    llm_server = session.get(LLMServer, agent.llm_server_id)
+    if not llm_server:
+        yield f"data: {json.dumps({'type': 'error', 'content': 'LLM server not found'})}\n\n"
+        return
+
+    try:
+        llm = llm_service.get_llm(llm_server)
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'content': f'Error connecting to LLM: {e}'})}\n\n"
+        return
+
+    try:
+        tools = await resolve_tools(agent, session)
+    except Exception:
+        tools = []
+
+    react_agent = create_react_agent(llm, tools)
+
+    input_messages = [SystemMessage(content=agent.system_prompt)]
+    for msg in history:
+        if msg["role"] == "user":
+            input_messages.append(HumanMessage(content=msg["content"]))
+        elif msg["role"] == "assistant":
+            input_messages.append(AIMessage(content=msg["content"]))
+    input_messages.append(HumanMessage(content=user_message))
+
+    full_content = ""
+    all_tool_calls = []
+
+    try:
+        async for event in react_agent.astream_events({"messages": input_messages}, version="v2"):
+            kind = event.get("event", "")
+
+            if kind == "on_chat_model_stream":
+                chunk = event.get("data", {}).get("chunk")
+                if chunk and hasattr(chunk, "content") and chunk.content:
+                    full_content += chunk.content
+                    yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
+
+            elif kind == "on_tool_start":
+                tool_name = event.get("name", "")
+                tool_input = event.get("data", {}).get("input", {})
+                all_tool_calls.append({"tool": tool_name, "args": tool_input, "result": ""})
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'args': tool_input})}\n\n"
+
+            elif kind == "on_tool_end":
+                output = event.get("data", {}).get("output", "")
+                result_str = str(output)[:500]
+                if all_tool_calls:
+                    all_tool_calls[-1]["result"] = result_str
+                yield f"data: {json.dumps({'type': 'tool_result', 'result': result_str})}\n\n"
+
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)[:200]})}\n\n"
+
+    if not full_content:
+        full_content = "Agent returned no response."
+
+    yield f"data: {json.dumps({'type': 'done', 'content': full_content, 'tool_calls': all_tool_calls})}\n\n"

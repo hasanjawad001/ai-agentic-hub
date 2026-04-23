@@ -219,9 +219,7 @@ def evaluate_condition(condition: str, state: dict) -> bool:
     return True
 
 
-async def run_workflow(workflow: Workflow, initial_input: str, session: Session, previous_context: list[dict] | None = None) -> dict:
-    compiled = build_workflow_graph(workflow, session)
-
+def _build_initial_state(initial_input: str, previous_context: list[dict] | None = None) -> WorkflowState:
     context_summary = ""
     if previous_context:
         context_summary = "Previous conversation:\n"
@@ -229,13 +227,18 @@ async def run_workflow(workflow: Workflow, initial_input: str, session: Session,
             context_summary += f"  User: {ctx['input']}\n  Result: {ctx['final_output'][:200]}\n"
         context_summary += "\nNew request: "
 
-    initial_state: WorkflowState = {
+    return {
         "input": context_summary + initial_input if context_summary else initial_input,
         "current_node": "",
         "state_data": {},
         "steps": [],
         "iteration": 0,
     }
+
+
+async def run_workflow(workflow: Workflow, initial_input: str, session: Session, previous_context: list[dict] | None = None) -> dict:
+    compiled = build_workflow_graph(workflow, session)
+    initial_state = _build_initial_state(initial_input, previous_context)
 
     result = await compiled.ainvoke(initial_state)
 
@@ -253,3 +256,34 @@ async def run_workflow(workflow: Workflow, initial_input: str, session: Session,
         "steps": steps,
         "final_output": final_output,
     }
+
+
+async def stream_workflow(workflow: Workflow, initial_input: str, session: Session, previous_context: list[dict] | None = None):
+    """Yields SSE events per node: node_start, node_done, done, error."""
+    compiled = build_workflow_graph(workflow, session)
+    initial_state = _build_initial_state(initial_input, previous_context)
+
+    all_steps = []
+    seen_steps = 0
+
+    try:
+        async for state in compiled.astream(initial_state):
+            steps = state.get("steps", [])
+            new_steps = steps[seen_steps:]
+            seen_steps = len(steps)
+
+            for step in new_steps:
+                all_steps.append(step)
+                yield json.dumps({"type": "node_done", "step": step})
+
+    except Exception as e:
+        yield json.dumps({"type": "error", "message": str(e)[:300]})
+
+    final_output = ""
+    for s in reversed(all_steps):
+        if s.get("type") == "agent" and s.get("output"):
+            final_output = s["output"]
+            break
+
+    state_data = state.get("state_data", {}) if state else {}
+    yield json.dumps({"type": "done", "state": state_data, "final_output": final_output})

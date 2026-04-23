@@ -1,4 +1,6 @@
+import json
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from backend.database import get_session
@@ -83,6 +85,35 @@ async def run_workflow(workflow_id: int, request: Request, session: Session = De
     })
 
     return result
+
+
+@router.post("/{workflow_id}/run/stream")
+async def run_workflow_stream(workflow_id: int, request: Request, session: Session = Depends(get_session)):
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        return {"error": "not found"}
+
+    body = await request.json()
+    initial_input = body.get("input", "")
+    previous_context = workflow_contexts.get(workflow_id, [])
+
+    async def event_generator():
+        final_output = ""
+        async for event_data in workflow_service.stream_workflow(workflow, initial_input, session, previous_context):
+            yield f"data: {event_data}\n\n"
+            try:
+                parsed = json.loads(event_data)
+                if parsed.get("type") == "done":
+                    final_output = parsed.get("final_output", "")
+            except Exception:
+                pass
+
+        workflow_contexts.setdefault(workflow_id, []).append({
+            "input": initial_input,
+            "final_output": final_output,
+        })
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/{workflow_id}/clear")

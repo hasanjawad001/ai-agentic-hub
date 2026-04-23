@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from backend.database import get_session
@@ -86,6 +87,36 @@ async def chat(agent_id: int, request: Request, session: Session = Depends(get_s
         "response": result["response"],
         "tool_calls": result["tool_calls"],
     }
+
+
+@router.post("/{agent_id}/chat/stream")
+async def chat_stream(agent_id: int, request: Request, session: Session = Depends(get_session)):
+    agent = session.get(Agent, agent_id)
+    if not agent:
+        return {"error": "not found"}
+
+    body = await request.json()
+    message = body.get("message", "")
+    history = chat_histories.get(agent_id, [])
+
+    async def event_generator():
+        full_content = ""
+        async for event in agent_service.stream_agent(agent, message, history, session):
+            yield event
+            import json
+            try:
+                data = json.loads(event.replace("data: ", "").strip())
+                if data.get("type") == "done":
+                    full_content = data.get("content", "")
+            except Exception:
+                pass
+
+        chat_histories[agent_id] = history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": full_content},
+        ]
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/{agent_id}/clear")
