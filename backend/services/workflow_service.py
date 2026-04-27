@@ -35,6 +35,11 @@ def parse_json_from_text(text: str) -> dict | None:
 
 
 def build_workflow_graph(workflow: Workflow, session: Session):
+    ## agent_service.run_agent(agent, prompt, [], db_session)
+    ## agentic flow: prompt to react + react (llm + tools)
+    ## prompt to react: agent's system prompt + history (currently []]) + state_data in workflow state + node's task/instruction
+    ## history: messages related to system, user, assistant (last), tool (none) 
+
     graph_data = workflow.graph
     nodes = {n["id"]: n for n in graph_data.get("nodes", [])}
     edges = graph_data.get("edges", [])
