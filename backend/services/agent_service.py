@@ -92,7 +92,7 @@ async def run_agent(agent: Agent, user_message: str, history: list[dict], sessio
     for msg in messages:
         if isinstance(msg, AIMessage):
             if msg.content:
-                final_content = msg.content
+                final_content += msg.content
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
                     all_tool_calls.append({
